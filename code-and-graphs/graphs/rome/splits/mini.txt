@@ -1,0 +1,5 @@
+rome/splits\data\grafo2358.34.gexf
+rome/splits\data\grafo2695.43.gexf
+rome/splits\data\grafo5708.48.gexf
+rome/splits\data\grafo2962.33.gexf
+rome/splits\data\grafo1978.37.gexf
