@@ -13,3 +13,13 @@ stable-baselines3~=2.6.0
 pandas~=2.2.3
 pybind11~=2.13.6
 setuptools~=75.8.0
+sb3-contrib~=2.4.0
+shapely>=2.0
+gdMetriX
+imageio>=2.26.0
+imageio-ffmpeg>=0.4.9
+requests>=2.31.0
+moviepy<2.0.0
+tensorboard
+pyinstrument
+optuna>=3.0.0

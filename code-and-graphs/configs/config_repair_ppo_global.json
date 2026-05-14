@@ -1,0 +1,113 @@
+{
+    "dataset": {
+        "name": "rome",
+        "split": "train"
+    },
+    "sampling": {
+        "train_count": 0,
+        "eval_count": 0,
+        "train_rome_count": 6603,
+        "train_ba_count": 1000,
+        "eval_rome_count": 216,
+        "eval_ba_count": 40,
+        "train_list_file": null,
+        "eval_list_file": null
+    },
+    "run": {
+        "seeds": [42],
+        "ppo_steps": 10000000,
+        "n_envs": 24,
+        "device": "auto",
+        "exp_name": null
+    },
+    "experiment": {
+        "shortlist_size": 4,
+        "optimization_goal": "global",
+        "best_local_bonus": 5.0,
+        "local_weight": 0,
+        "sizemax_weight": 0,
+        "global_weight": 1,
+        "standard_horizon": 256,
+        "repair_horizon": 32,
+        "repair_perturb_steps": 8,
+        "repair_perturb_attempts": 4,
+        "plateau_patience": 10,
+        "plateau_bank_size": 8,
+        "broadened_repair": false,
+        "plateau_only_replay": false,
+        "eval_outer_restarts": 3,
+        "eval_restart_perturb_steps": 2,
+        "eval_batch_size": 256
+    },
+    "env": {
+        "type": "move_distance",
+        "patch_size": 63,
+        "node_selection_strategy": "heuristic_global",
+        "node_visit_repeat_count": 1,
+        "n_distances": 6,
+        "heuristic_new_visit_penalty_coef": 0.5,
+        "optimization_goal": "global",
+        "reset_unsuccessful_moves_threshold": 64,
+        "reward": {
+            "global_optimization": {
+                "global_weight": 1.0,
+                "sparse_penalty": -0.01
+            },
+            "local_optimization": {
+                "local_weight": 10.0,
+                "sizemax_weight": 0.1,
+                "global_weight": 0.05,
+                "sparse_penalty": -0.01
+            }
+        }
+    },
+    "policy": {
+        "features_extractor": {
+            "features_dim": 256,
+            "cnn_res_blocks": [0, 0, 1],
+            "cnn_channels": [8, 16, 32],
+            "cnn_out_dim": 64,
+            "tab_hidden_dim": 64,
+            "tab_out_dim": 64,
+            "fusion_hidden_dim": 256,
+            "pixel_map_key": "pixel_map"
+        }
+    },
+     "ppo": {
+        "learning_rate": 2e-4,
+        "n_steps": 256,
+        "batch_size": 128,
+        "n_epochs": 8,
+        "clip_range": 0.2,
+        "clip_range_vf": 0.2,
+        "ent_coef": 0.05,
+        "vf_coef": 0.5,
+        "target_kl": 0.2,
+        "gamma": 0.99,
+        "gae_lambda": 0.99,
+        "max_grad_norm": 0.5,
+        "policy_kwargs": {
+            "net_arch": [128, 128]
+        }
+    },
+    "training": {
+        "eval_freq_steps": 100000,
+        "normalize_reward": false,
+        "reward_clip": 15.0,
+        "use_lr_ent_schedule": true,
+        "final_learning_rate": 2e-5,
+        "final_ent_coef": 0.002,
+        "use_self_imitation": false,
+        "sil_collect_episodes": 16,
+        "sil_buffer_size": 256,
+        "sil_batch_size": 64,
+        "sil_epochs": 2,
+        "sil_weight": 0.25,
+        "sil_stochastic_collect": false
+    },
+    "io": {
+        "checkpoint_root": "",
+        "output_json": "",
+        "output_jsonl": ""
+    }
+}

@@ -47,6 +47,13 @@ class GraphPathDataset(Dataset):
             G_orig = nx.read_gexf(abs_path)
         elif self.file_format == 'gml':
             G_orig = nx.read_gml(abs_path)
+        elif self.file_format == 'json':
+            # For JSON contest graphs, use util.load_graph; ignore width/height here
+            try:
+                from util.load_graph import load_graph as _load_json_graph
+            except Exception:
+                from src.util.load_graph import load_graph as _load_json_graph
+            G_orig, _, _ = _load_json_graph(abs_path)
         else:
             raise ValueError(f"Unsupported file format: {self.file_format}")
         # Relabel nodes to integers for R-tree compatibility
@@ -84,8 +91,14 @@ def load_split_dataset(split_type, dataset_type='rome'):
         data_dir = os.path.join(splits_dir, 'data')  # Corrected path
         file_format = 'gml'
         sort_by_n = True
+    elif dataset_type == 'contest':
+        # Contest graphs are JSON with width/height metadata; we will pass paths to the trainer
+        splits_dir = os.path.join(project_root, 'graphs', 'contest_filtered')
+        data_dir = os.path.join(splits_dir, 'data')
+        file_format = 'json'
+        sort_by_n = False
     else:
-        raise ValueError("Invalid dataset_type. Must be 'rome' or 'extended_BA'.")
+        raise ValueError("Invalid dataset_type. Must be 'rome', 'extended_BA', or 'contest'.")
 
     split_file = os.path.join(splits_dir, f"{split_type}.txt")
     if not os.path.exists(split_file):

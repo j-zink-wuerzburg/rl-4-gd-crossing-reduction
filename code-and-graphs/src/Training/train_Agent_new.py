@@ -18,14 +18,50 @@ from Training.dataloader import load_split_dataset
 import networkx as nx
 import gymnasium as gym
 
+
 def _read_graph(path: str):
+    """Return a dict with graph and optional width/height inferred from file extension."""
     if path.endswith(".gml"):
         G = nx.read_gml(path)
+        return {"graph": nx.convert_node_labels_to_integers(G, label_attribute="original_label"), "width": None, "height": None}
     elif path.endswith(".gexf"):
         G = nx.read_gexf(path)
+        return {"graph": nx.convert_node_labels_to_integers(G, label_attribute="original_label"), "width": None, "height": None}
+    elif path.endswith(".json"):
+        try:
+            from util.load_graph import load_graph as _load_json_graph
+        except Exception:
+            from src.util.load_graph import load_graph as _load_json_graph
+        G, width, height = _load_json_graph(path)
+        G = nx.convert_node_labels_to_integers(G, label_attribute="original_label")
+        return {"graph": G, "width": width, "height": height}
     else:
         raise ValueError(f"Unsupported graph format: {path}")
-    return nx.convert_node_labels_to_integers(G, label_attribute="original_label")
+
+
+def mutate_graph(G: nx.Graph, edge_swap_frac: float = 0.05, max_frac: float = 0.2) -> nx.Graph:
+    """
+    Degree-preserving structural mutation using double_edge_swap.
+    - edge_swap_frac: fraction of edges to rewire per mutation (clipped by max_frac)
+    - max_frac: upper bound on fraction of edges to attempt swapping
+    Safe for small graphs; returns a copied graph if mutation not applicable.
+    """
+    if not isinstance(G, nx.Graph):
+        G = nx.Graph(G)
+    H = G.copy()
+    m = H.number_of_edges()
+    # If too few edges, return unmodified
+    if m < 4:
+        return H
+    frac = min(max(edge_swap_frac, 0.0), max_frac)
+    nswap = max(1, int(round(m * frac)))
+    try:
+        nx.double_edge_swap(H, nswap=nswap, max_tries=nswap * 10)
+    except Exception:
+        # On failure, just return the original copy
+        return H
+    return H
+
 
 class Sampler:
     def __init__(self, easy_graphs, hard_graphs, p_hard=0.1):
@@ -42,13 +78,19 @@ class Sampler:
 
     def sample(self):
         assert self.easy and self.hard
+        is_hard = False
         if random.random() < self.p_hard:
-            g = self.hard[self.i_h % len(self.hard)]
+            p = self.hard[self.i_h % len(self.hard)]
             self.i_h += 1
+            is_hard = True
         else:
-            g = self.easy[self.i_e % len(self.easy)]
+            p = self.easy[self.i_e % len(self.easy)]
             self.i_e += 1
-        return _read_graph(g)
+        info = _read_graph(p)
+        if is_hard:
+            # Mutate only the hard graphs to increase variety
+            info["graph"] = mutate_graph(info["graph"])  # width/height unchanged
+        return info
 
 def make_env(rank, seed, sampler, max_steps, opt_type):
     def _thunk():
@@ -59,14 +101,19 @@ def make_env(rank, seed, sampler, max_steps, opt_type):
         if rank == 0:
             print(f"[Main PID] {os.getpid()} creating workers…", flush=True)
         print(f"[Worker {rank}] PID={os.getpid()}", flush=True)
-        g = sampler.sample()
-        env = GraphLayoutEnv(graph=g, opt_type=opt_type)
+        info = sampler.sample()
+        G, W, H = info["graph"], info.get("width"), info.get("height")
+        if W is not None and H is not None:
+            env = GraphLayoutEnv(graph=G, width=W, height=H, opt_type=opt_type)
+        else:
+            env = GraphLayoutEnv(graph=G, opt_type=opt_type)
 
         # rotate a new graph on every reset
         orig_reset = env.reset
         def reset_with_graph(**kwargs):
-            g2 = sampler.sample()
-            return orig_reset(Graph=g2, **kwargs)
+            info2 = sampler.sample()
+            G2, W2, H2 = info2["graph"], info2.get("width"), info2.get("height")
+            return orig_reset(Graph=G2, Width=W2, Height=H2, **kwargs)
         env.reset = reset_with_graph
 
         env = gym.wrappers.TimeLimit(env, max_episode_steps=max_steps)
@@ -80,10 +127,15 @@ def make_eval_env(seed, graphs, opt_type):
         idx = {"i": 0}
         class EvalEnv(GraphLayoutEnv):
             def reset(self, **kwargs):
-                g = fixed[idx["i"] % len(fixed)]
+                p = fixed[idx["i"] % len(fixed)]
                 idx["i"] += 1
-                return super().reset(Graph=_read_graph(g), **kwargs)
-        env = EvalEnv(_read_graph(fixed[0]), opt_type=opt_type)
+                info = _read_graph(p)
+                return super().reset(Graph=info["graph"], Width=info.get("width"), Height=info.get("height"), **kwargs)
+        first = _read_graph(fixed[0])
+        if first.get("width") is not None and first.get("height") is not None:
+            env = EvalEnv(first["graph"], width=first.get("width"), height=first.get("height"), opt_type=opt_type)
+        else:
+            env = EvalEnv(first["graph"], opt_type=opt_type)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=2000)
         env = Monitor(env)
         env.reset(seed=seed)
@@ -97,7 +149,7 @@ def main():
     easy_split = "train"
     hard_split = "train"
     easy_type = "rome"
-    hard_type = "extended_BA"
+    hard_type = "contest"
     opt_type = "Local"
     # opt_type = "Global"
     # n_envs = 4
@@ -110,7 +162,7 @@ def main():
     p_hard = 0.1
     logdir = "runs"
     run_name = f"ppo_test_cluster_{opt_type}"
-    device = "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     resume_training = True
 
     # Load datasets (with caching)
@@ -151,14 +203,56 @@ def main():
 
 
     save_dir = os.path.join(logdir, run_name)
+    # Also look under src/runs if top-level runs is empty for this run
+    if not os.path.isdir(save_dir):
+        alt_save_dir = os.path.join(parent_dir, 'runs', run_name)
+        if os.path.isdir(alt_save_dir):
+            print(f"[Resume] Using existing run dir: {alt_save_dir}")
+            save_dir = alt_save_dir
     os.makedirs(save_dir, exist_ok=True)
-    MODEL_PATH = os.path.join(save_dir, "final_model.zip")
+    MODEL_PATH = os.path.join(save_dir, "int_grid_model.zip")
 
-    if os.path.exists(MODEL_PATH) and resume_training:
-        print(f"[Resume] Loading {MODEL_PATH}")
-        model = Agent.load(MODEL_PATH, env=vec_env, device=device)
-        # keep TB step continuity:
+    import re
+    def _latest_ckpt_and_steps(d):
+        try:
+            files = [f for f in os.listdir(d) if f.endswith('.zip')]
+        except Exception:
+            return None, None
+        # Prefer ckpt_*_steps.zip with max step count
+        ckpts = []
+        for f in files:
+            m = re.match(r"ckpt_(\d+)_steps\.zip$", f)
+            if m:
+                ckpts.append((int(m.group(1)), os.path.join(d, f)))
+        if ckpts:
+            step, path = max(ckpts, key=lambda t: t[0])
+            return path, step
+        # Else best_model.zip
+        if 'best_model.zip' in files:
+            return os.path.join(d, 'best_model.zip'), None
+        return None, None
+
+    total_steps = 30_000_000
+    resume_path = None
+    resume_at = None
+
+    if os.path.exists(MODEL_PATH):
+        resume_path = MODEL_PATH
+    else:
+        resume_path, parsed_steps = _latest_ckpt_and_steps(save_dir)
+        if parsed_steps is not None:
+            resume_at = int(parsed_steps)
+
+    if resume_path and resume_training:
+        print(f"[Resume] Loading {resume_path}")
+        model = Agent.load(resume_path, env=vec_env, device=device)
+        # If resume_at not parsed, use loaded model's counter; else enforce parsed
+        if resume_at is None:
+            resume_at = int(getattr(model, 'num_timesteps', 0))
+        model.num_timesteps = int(resume_at)
         reset_steps = False
+        total_steps = max(0, 30_000_000 - int(resume_at))
+        print(f"[Resume] Starting from {model.num_timesteps} steps; remaining={total_steps}")
     else:
         policy_kwargs = dict(net_arch={"pi": [256, 256], "vf": [256, 256]}, normalize_images=False)  # simple and stable
         model = Agent(
@@ -189,6 +283,20 @@ def main():
         save_vecnormalize=True,
     )
 
+    # Seed baseline best so we don't overwrite best_model.zip on resume unless better
+    from stable_baselines3.common.evaluation import evaluate_policy
+    baseline_best = None
+    best_file = os.path.join(save_dir, "best_model.zip")
+    if os.path.exists(best_file):
+        try:
+            tmp_model = Agent.load(best_file, env=eval_env, device=device)
+            mean_reward, _ = evaluate_policy(tmp_model, eval_env, n_eval_episodes=8, deterministic=True)
+            baseline_best = float(mean_reward)
+            print(f"[Eval] Baseline best from existing best_model.zip: {baseline_best:.4f}")
+            del tmp_model
+        except Exception as e:
+            print(f"[Eval] Could not evaluate existing best model: {e}")
+
     eval_cb = EvalCallback(
         eval_env,
         best_model_save_path=save_dir,
@@ -198,6 +306,9 @@ def main():
         deterministic=True,
         render=False,
     )
+
+    if baseline_best is not None:
+        eval_cb.best_mean_reward = baseline_best
 
     class LCRLoggerCB(BaseCallback):
         def __init__(self, log_every=5000, success_threshold=1, verbose=0):
@@ -256,19 +367,21 @@ def main():
             self.phase = "warmup"
             self.phase_start_steps = 0
 
-        def set_lr(self, new_lr: float):
-            """Set optimizer LR + replace SB3 lr_schedule so TB shows the same value."""
+        def set_lr(self, new_lr: float | None):
+            """Set optimizer LR and sync SB3 lr_schedule if provided."""
+            if new_lr is None:
+                return
             for g in model.policy.optimizer.param_groups:
                 g["lr"] = float(new_lr)
-            self.model.lr_schedule = lambda _: float(new_lr)  # so SB3 logs the same LR
+            self.model.lr_schedule = lambda _: float(new_lr)
 
-        def set_ent_coef(self, new_ent: float):
-            """Entropy coefficient is read each update from model.ent_coef."""
+        def set_ent_coef(self, new_ent: float | None):
+            """Set entropy coefficient if provided."""
+            if new_ent is None:
+                return
             self.model.ent_coef = float(new_ent)
-            # optional: log it yourself so you see it in TB
             if hasattr(model, "logger"):
                 model.logger.record("train/ent_coef", float(new_ent))
-
 
         def _enter_phase(self, name):
             self.phase = name
@@ -290,7 +403,24 @@ def main():
                 f"[Phase] Enter '{name}' at {self.model.num_timesteps} steps; p_hard={self.sampler.p_hard:.2f}")
 
         def _on_training_start(self) -> None:
-            self._enter_phase("warmup")
+            # Resume correct phase and progress based on global step (TEMP one-off resume patch)
+            g = int(self.model.num_timesteps)
+            w = int(self.phase_steps.get("warmup", 0))
+            m = int(self.phase_steps.get("mixed", 0))
+            h = int(self.phase_steps.get("hard", 0))
+            if g < w:
+                phase, done = "warmup", g
+            elif g < w + m:
+                phase, done = "mixed", g - w
+            elif g < w + m + h:
+                phase, done = "hard", g - w - m
+            else:
+                phase, done = "hard", h
+            self._enter_phase(phase)
+            # Make phase counter reflect progress already done
+            self.phase_start_steps = self.model.num_timesteps - done
+            if self.verbose:
+                print(f"[Phase] Resume: global={g}, phase='{phase}', done_in_phase={done}, start_at={self.phase_start_steps}")
 
         def _on_step(self) -> bool:
             steps = self.model.num_timesteps - self.phase_start_steps

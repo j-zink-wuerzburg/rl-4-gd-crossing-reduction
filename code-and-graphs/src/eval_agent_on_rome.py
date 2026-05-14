@@ -4,8 +4,8 @@ from tqdm import tqdm
 import torch
 from stable_baselines3 import PPO as Agent
 from sb3_contrib import RecurrentPPO as RecurrentAgent
-from src.env.GraphLayoutEnv import GraphLayoutEnv
-from src.Training.dataloader import load_split_dataset
+from env.GraphLayoutEnv import GraphLayoutEnv
+from Training.dataloader import load_split_dataset
 import sys
 import networkx as nx
 import argparse
@@ -18,24 +18,24 @@ sys.path.append(parent_dir)
 # --------- CONFIGURATION ---------
 # Model configurations for easy comparison
 MODEL_CONFIGS = {
-    "ppo_gnn_LSTM": {
-        "model_path": "src/models/ppo_gnn_LSTM.pt",
-        "gnn_path": "src/gnn/models/ppo_gnn_gnn_LSTM.pt",
-        "agent_type": "recurrent",  # or "standard"
-        "description": "PPO with GNN and LSTM"
-    },
-    "ppo_gnn_100": {
-        "model_path": "src/models/ppo_gnn_100.pt",
-        "gnn_path": "src/gnn/models/ppo_gnn_gnn.pt",
-        "agent_type": "standard",
-        "description": "PPO with GNN (100 nodes)"
-    },
-    "ppo_gnn": {
-        "model_path": "src/models/ppo_gnn.pt",
-        "gnn_path": "src/gnn/models/ppo_gnn_gnn.pt",
-        "agent_type": "standard",
-        "description": "Standard PPO with GNN"
-    },
+    # "ppo_gnn_LSTM": {
+    #     "model_path": "src/models/ppo_gnn_LSTM.pt",
+    #     "gnn_path": "src/gnn/models/ppo_gnn_gnn_LSTM.pt",
+    #     "agent_type": "recurrent",  # or "standard"
+    #     "description": "PPO with GNN and LSTM"
+    # },
+    # "ppo_gnn_100": {
+    #     "model_path": "src/models/ppo_gnn_100.pt",
+    #     "gnn_path": "src/gnn/models/ppo_gnn_gnn.pt",
+    #     "agent_type": "standard",
+    #     "description": "PPO with GNN (100 nodes)"
+    # },
+    # "ppo_gnn": {
+    #     "model_path": "src/models/ppo_gnn.pt",
+    #     "gnn_path": "src/gnn/models/ppo_gnn_gnn.pt",
+    #     "agent_type": "standard",
+    #     "description": "Standard PPO with GNN"
+    # },
     "ppo_local": {
         "model_path": "src/models/ppo_local.pt",
         "gnn_path": None,  # No GNN for local model

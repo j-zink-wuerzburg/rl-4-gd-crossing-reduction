@@ -1,0 +1,79 @@
+{
+    "dataset": {
+        "name": "rome",
+        "split": "train"
+    },
+    "env": {
+        "type": "move_distance",
+        "width": 1000,
+        "height": 1000,
+        "patch_size": 63,
+        "use_int_grid": true,
+        "pixel_decay_alpha": 0.5,
+        "node_selection_strategy": "heuristics_new",
+        "node_visit_repeat_count": 5,
+        "n_distances": 6,
+        "reward_scale": 1.0,
+        "optimization_goal": "global",
+        "reset_unsuccessful_moves_threshold": 256,
+        "reward": {
+            "global_optimization": {
+                "global_weight": 1.0,
+                "sparse_penalty": -0.001
+            },
+            "local_optimization": {
+                "local_weight": 10.0,
+                "sizemax_weight": 0.1,
+                "global_weight": 1.0,
+                "sparse_penalty": -0.001
+            }
+        }
+    },
+    "policy": {
+        "features_extractor": {
+                "features_dim": 512,
+                "pixel_map_key": "pixel_map",
+                "cnn_channels": [32, 64, 128],
+                "cnn_blocks_per_stage": [2, 2, 2],
+                "cnn_pool_out": [4, 4],
+                "cnn_out_dim": 256,
+                "tab_hidden_dim": 128,
+                "tab_out_dim": 128,
+                "fusion_hidden_dim": 512,
+                "use_se": true,
+                "cnn_dropout_p": 0.0
+            }
+    },
+    "ppo": {
+        "policy": "MultiInputPolicy",
+        "learning_rate": 3e-4,
+        "learning_rate_end": 5e-5, 
+        "n_steps": 2048,
+        "batch_size": 256,
+        "n_epochs": 4,
+        "gamma": 0.99,
+        "gae_lambda": 0.9,
+        "clip_range": 0.2,
+        "ent_coef": 0.01,
+        "ent_coef_end": 0.005,
+        "vf_coef": 0.25,
+        "max_grad_norm": 0.5,
+        "policy_kwargs": {
+            "net_arch": [
+                256,
+                256
+            ]
+        }
+    },
+    "training": {
+        "use_action_masks": false,
+        "total_timesteps": 40000000,
+        "n_envs": 32,
+        "save_freq": 1000000,
+        "eval_freq": 100000,
+        "log_heatmap": false,
+        "heatmap_freq": 1000,
+        "log_video": false,
+        "video_freq": 1000
+    }
+}
